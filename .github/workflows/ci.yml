@@ -1,18 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches: [develop]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   # Run cargo fmt --all -- --check
-  format:
-    name: Format
+  setup:
+    name: Setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -24,6 +22,12 @@ jobs:
           profile: minimal
           components: rustfmt
           override: true
+
+  format:
+    name: Format
+    needs: Setup
+    runs-on: ubuntu-latest
+    steps:
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -33,8 +37,8 @@ jobs:
 
   # Build solution
   build:
-    needs: Format
     name: Build
+    needs: Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -64,20 +68,8 @@ jobs:
 
   # Run cargo test
   test:
-    needs: Build
     name: Test Suite
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
-  # Run cargo clippy -- -D warnings
-  clippy_check:
     needs: Build
-    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -91,16 +83,18 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.toml') }}
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.toml') }}
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
         with:
-          toolchain: stable
-          profile: minimal
-          components: clippy
-          override: true
-      - name: Install Dependencies
-        run: sudo apt-get update; sudo apt-get install pkg-config libx11-dev libasound2-dev libudev-dev
+          command: test
+
+  # Run cargo clippy -- -D warnings
+  clippy_check:
+    name: Clippy
+    needs: Build
+    runs-on: ubuntu-latest
+    steps:
       - name: Run clippy
         uses: actions-rs/clippy-check@v1
         with:
