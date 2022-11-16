@@ -25,7 +25,7 @@ This section outlines how to get this project up and running locally.
 That's it! You're ready to start contributing! 💪
 
 ## Contributing
-To contribute to this project, simply start working on an issue that's ready in a personal branch. When you're done implementing, create a PR targetting the `develop` branch.
+To contribute to this project, create a branch in accordance with our branching strategy and start working on an issue. When you're done implementing, create a PR targetting the `develop` branch.
 
 ### Branching strategy
 This repository uses feature branching. When working on an issue, create a branch from `develop` using the naming convention 
