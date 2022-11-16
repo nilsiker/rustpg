@@ -10,10 +10,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Run cargo fmt --all -- --check
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: rustfmt
+          override: true
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
 
-  # Run cargo test
-  test:
-    name: Test Suite
+
+  # Build solution
+  build:
+    needs: Format
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -39,10 +60,23 @@ jobs:
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
+          command: build
+
+  # Run cargo test
+  test:
+    needs: Build
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
           command: test
 
   # Run cargo clippy -- -D warnings
   clippy_check:
+    needs: Build
     name: Clippy
     runs-on: ubuntu-latest
     steps:
@@ -72,23 +106,3 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: -- -D warnings
-
-  # Run cargo fmt --all -- --check
-  format:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt
-          override: true
-      - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
