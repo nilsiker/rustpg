@@ -42,3 +42,7 @@ Before creating your PR, make sure that
 
 Using [bacon](https://github.com/Canop/bacon), you can easily run `clippy` and other cargo commands in the background, while you are developing. I highly recommend you try it out!
 
+## Licensing
+This project is licensed using a dual MIT/Apache license in accordance with [the COPYRIGHT.md](COPYRIGHT.md).
+
+The project comes bundled with the [Cascadia Code font](https://github.com/microsoft/cascadia-code), which goes under the [SIL Open Font License](https://github.com/microsoft/cascadia-code/blob/main/LICENSE)
