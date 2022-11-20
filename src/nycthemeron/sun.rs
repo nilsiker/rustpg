@@ -36,7 +36,10 @@ fn setup(mut commands: Commands) {
         .insert(Sun);
 }
 
-fn handle_events(mut fraction: ResMut<FractionOfDay>, mut events: EventReader<UpdateSunPositionEvent>) {
+fn handle_events(
+    mut fraction: ResMut<FractionOfDay>,
+    mut events: EventReader<UpdateSunPositionEvent>,
+) {
     for event in events.iter() {
         fraction.0 = event.0;
     }

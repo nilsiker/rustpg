@@ -37,7 +37,7 @@ impl Plugin for TimeOfDayPlugin {
 /// A struct to hold the current time of day, assuming a 24-hour day.
 ///
 /// Defaults to starting time 08:00:00, in perfect time for school!
-#[derive(Resource, Clone, Inspectable,Reflect, Debug)]
+#[derive(Resource, Clone, Inspectable, Reflect, Debug)]
 pub struct TimeOfDay {
     time: f32,
     speed_modifier: f32,
