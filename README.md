@@ -20,7 +20,7 @@ This section outlines how to get this project up and running locally.
 2. Clone this repository.
 3. Open your local clone, preferably using [vscode](https://code.visualstudio.com). 
     - Remember to check out the extension suggestions!
-4. Make sure your fresh clone builds and runs, by using `cargo run`.
+4. Make sure your fresh clone builds and runs, by running an example, like `cargo run --example nychtemeron`.
 
 That's it! You're ready to start contributing! 💪
 
