@@ -1,10 +1,20 @@
-use std::collections::HashMap;
+use bevy::{
+    prelude::*,
+    render::{
+        mesh::{Indices, VertexAttributeValues},
+        render_resource::PrimitiveTopology,
+    }, utils::HashMap,
+};
 
-use bevy::{math::Vec3, prelude::{Mesh, default}};
-use mesh_gen::generate_mesh;
-use rtin::Rtin;
+use self::{rtin::Rtin, mesh_gen::generate_mesh};
 
-use self::noise_gen::{get_noise_map, NoiseConfig};
+use super::noise::{NoiseConfig, get_noise_map};
+
+
+pub enum GenerationMode {
+    Rtin,
+    Simple,
+}
 pub struct MeshData {
     vertices: Vec<[f32; 3]>,
     indices: Vec<u16>,
@@ -18,13 +28,6 @@ pub struct ChunkCoord {
     y: usize,
 }
 
-pub struct TerrainGenerator {
-    rtin: Rtin,
-    chunk_size: usize,
-    flat_shading: bool,
-    noise: NoiseConfig,
-    terrains: HashMap<ChunkCoord, Vec<f32>>,
-}
 
 pub struct Chunk {
     pub coordinate: ChunkCoord,
@@ -32,35 +35,45 @@ pub struct Chunk {
     pub mesh: Mesh,
 }
 
+
+pub struct TerrainGenerator {
+    mode: GenerationMode,
+    grid_size: usize,
+    flat_shading: bool,
+    noise: NoiseConfig,
+    terrains: HashMap<ChunkCoord, Vec<f32>>,
+}
+
 impl TerrainGenerator {
-    pub fn new(chunk_size: usize, flat_shading: bool) -> TerrainGenerator {
+    pub fn new(mode: GenerationMode, chunk_size: usize, flat_shading: bool) -> TerrainGenerator {
         if chunk_size > 0 && chunk_size & (chunk_size - 1) != 0 {
             panic!("Expected chunk size to be 2^n, got {chunk_size}");
         }
         let grid_size = chunk_size + 1;
-        let rtin = Rtin::new(grid_size);
         let noise = NoiseConfig {
-            seed: 0,
+            seed: 1,
             size: grid_size,
-            frequency: 0.02,
-            octaves: 2,
-            ..default()
+            frequency: 0.005,
+            lacunarity: 2.0,
+            octaves: 3,
+            persistence: 2.0,
+            scale: 0.1,
         };
 
         TerrainGenerator {
-            rtin,
-            chunk_size,
+            mode,
+            grid_size,
             flat_shading,
             noise,
             terrains: HashMap::new(),
         }
     }
-    pub fn generate_terrain_chunk(&mut self, x: usize, y: usize, precision: f32) -> Chunk {
+    pub fn generate_terrain_chunk(&mut self, x: usize, y: usize, lod: f32) -> Chunk {
         let coord = ChunkCoord { x, y };
         let terrain = match self.terrains.get(&coord) {
             Some(terrain) => terrain,
             None => {
-                let terrain = generate_terrain_heights(x, y, 15.0, &self.noise);
+                let terrain = generate_terrain_heights(x, y, 50.0, &self.noise);
                 self.terrains.insert(coord, terrain);
                 &self
                     .terrains
@@ -68,17 +81,23 @@ impl TerrainGenerator {
                     .expect("adding of terrain failed unexpectedly")
             }
         };
+        let mesh_data = match self.mode {
+            GenerationMode::Rtin => {
+                let rtin = Rtin::new(self.grid_size);
+                let tile = rtin.create_tile(&terrain);
+                tile.generate_mesh_data(lod)
+            }
+            GenerationMode::Simple => todo!(),
+        };
 
-        let tile = self.rtin.create_tile(&terrain);
-        let mesh_data = tile.generate_mesh_data(15.0 * (1.0-precision)); // TODO parameterize max_error
         let mesh = generate_mesh(mesh_data, self.flat_shading);
 
         Chunk {
             coordinate: coord,
             position: Vec3::new(
-                x as f32 * self.chunk_size as f32,
+                x as f32 * (self.grid_size - 1) as f32,
                 0.0,
-                y as f32 *  self.chunk_size as f32,
+                y as f32 * (self.grid_size - 1) as f32,
             ),
             mesh,
         }
@@ -385,8 +404,6 @@ pub fn generate_terrain_heights(
     for y in 0..noise_config.size {
         for x in 0..noise_config.size {
             let mut value = noise_map.get_value(x, y) as f32;
-            value *= 2.0;
-            value -= 1.0;
             value *= height_multiplier;
             terrain.push(value);
         }
@@ -395,50 +412,4 @@ pub fn generate_terrain_heights(
     // TODO normalize heights!
 
     terrain
-}
-
-pub mod noise_gen {
-    use noise::{
-        utils::{NoiseMap, NoiseMapBuilder, PlaneMapBuilder},
-        Fbm,
-    };
-    #[derive(Default)]
-    pub struct NoiseConfig {
-        pub seed: u32,
-        pub size: usize,
-        pub frequency: f64,
-        pub lacunarity: f64,
-        pub persistence: f64,
-        pub octaves: usize,
-    }
-
-    pub fn get_noise_map(x_coord: usize, y_coord: usize, noise_config: &NoiseConfig) -> NoiseMap {
-        let NoiseConfig {
-            seed:_seed,
-            size,
-            frequency,
-            lacunarity,
-            octaves,
-            persistence,
-        } = noise_config;
-
-        let mut fbm = Fbm::new();
-        fbm.frequency = *frequency;
-        fbm.lacunarity = *lacunarity;
-        fbm.persistence = *persistence;
-        fbm.octaves = *octaves;
-
-        let bounds_size = (*size) as f64;
-        let bounds_start_x = x_coord as f64 * bounds_size as f64;
-        let bounds_end_x = (x_coord + 1) as f64 * bounds_size;
-        let bounds_start_y = y_coord as f64 * bounds_size as f64;
-        let bounds_end_y = (y_coord + 1) as f64 * bounds_size;
-
-        let map = PlaneMapBuilder::new(&fbm)
-            .set_size(*size, *size)
-            .set_x_bounds(bounds_start_x, bounds_end_x + 1.0)
-            .set_y_bounds(bounds_start_y, bounds_end_y + 1.0)
-            .build();
-        map
-    }
 }

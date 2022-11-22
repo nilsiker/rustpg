@@ -14,17 +14,18 @@ impl Plugin for SpectatorPlugin {
 
 fn rotator(
     mut query: Query<&mut Transform, With<Camera>>,
+    input: Res<Input<MouseButton>>,
     mut mouse_events: EventReader<MouseMotion>,
     time: Res<Time>,
 ) {
     if let Ok(mut camera_transform) = query.get_single_mut() {
         for event in mouse_events.iter() {
-            let Vec2 { x, y } = event.delta;
+            if input.pressed(MouseButton::Right) {
+                let Vec2 { x, y } = event.delta;
 
-
-            camera_transform.rotate_y(-x * time.delta_seconds());
-            camera_transform.rotate_local_x(-y * time.delta_seconds());
-            
+                camera_transform.rotate_y(-x * time.delta_seconds());
+                camera_transform.rotate_local_x(-y * time.delta_seconds());
+            }
         }
     }
 }
