@@ -1,34 +1,34 @@
-use array2d::Array2D;
 use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 use noise::{
     utils::{NoiseMap, NoiseMapBuilder, PlaneMapBuilder},
-    Fbm, Perlin, NoiseFn,
+    Fbm, Perlin,
 };
+
+use super::mesh::MeshConfig;
 
 #[derive(Component, Inspectable, Clone)]
 pub struct NoiseConfig {
     pub seed: u32,
-    pub size: i32,
     #[inspectable(min = 0, max = 6)]
     pub octaves: usize,
     pub frequency: f64,
     pub lacunarity: f64,
     pub persistence: f64,
+    pub offset: Vec2,
 }
 impl Default for NoiseConfig {
     fn default() -> Self {
         Self {
             seed: 0,
-            size: 32,
             octaves: 4,
             frequency: 0.01,
             lacunarity: 1.1,
             persistence: 1.0,
+            offset: Vec2::default(),
         }
     }
 }
-
 
 pub struct Noise {
     fbm: Fbm<Perlin>,
@@ -42,30 +42,49 @@ impl Default for Noise {
 }
 impl Noise {
     pub fn new(config: NoiseConfig) -> Self {
-        let NoiseConfig { seed, .. } = config;
+        let NoiseConfig {
+            seed,
+            octaves,
+            frequency,
+            lacunarity,
+            persistence,
+            ..
+        } = config;
 
         let mut fbm = Fbm::new(seed);
-        fbm.frequency = config.frequency;
-        fbm.lacunarity = config.lacunarity;
-        fbm.octaves = config.octaves;
-        fbm.persistence = config.persistence;
+        fbm.frequency = frequency;
+        fbm.lacunarity = lacunarity;
+        fbm.octaves = octaves;
+        fbm.persistence = persistence;
 
         Self { fbm, config }
     }
 
-    pub fn generate_noise_map(&self, x: i32, y: i32) -> NoiseMap {
-        let NoiseConfig { size, .. } = self.config;
+    pub fn generate_noise_map(&self, x: usize, y: usize, mesh_config: &MeshConfig) -> NoiseMap {
+        todo!(); // TRY worldgen crate instead of this!
+        let NoiseConfig { offset, .. } = self.config;
+        let &MeshConfig {
+            grid_size, scale, ..
+        } = mesh_config;
+        let scale = scale as f64;
 
-        let lower_x_bound = (x * size) as f64;
-        let upper_x_bound = ((x + 1) * size) as f64;
+        let lower_x_bound = x as f64 * scale + offset.x as f64;
+        let upper_x_bound = (x + 1) as f64 * scale + offset.x as f64;
 
-        let lower_y_bound = (y * size) as f64;
-        let upper_y_bound = ((y + 1) * size) as f64;
+        let lower_y_bound = y as f64 * scale + offset.y as f64;
+        let upper_y_bound = (y + 1) as f64 * scale + offset.y as f64;
 
-        PlaneMapBuilder::<_, 2>::new(&self.fbm)
-            .set_size(size as usize, size as usize)
+        let nm = PlaneMapBuilder::<_, 2>::new(&self.fbm)
+            .set_size(grid_size, grid_size)
             .set_x_bounds(lower_x_bound, upper_x_bound)
-            .set_y_bounds(lower_y_bound, upper_y_bound)
-            .build()
+            .set_y_bounds(lower_y_bound, upper_y_bound);
+
+        let x_b = nm.x_bounds();
+        let y_b = nm.y_bounds();
+
+        bevy::log::info!("chunk ({x},{y}):");
+        bevy::log::info!("x bounds: {:?}", x_b);
+        bevy::log::info!("y bounds: {:?}", y_b);
+        nm.build()
     }
 }

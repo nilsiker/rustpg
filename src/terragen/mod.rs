@@ -1,12 +1,13 @@
+pub mod lib_noise;
 pub mod mesh;
 pub mod noise;
 
-use bevy::prelude::*;
+use bevy::{pbr::wireframe::Wireframe, prelude::*};
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use self::{
-    mesh::{MeshConfig, MeshImageData, RenderMode},
-    noise::{Noise, NoiseConfig},
+    lib_noise::{Noise, NoiseConfig},
+    mesh::{MeshConfig, MeshImageData},
 };
 
 #[derive(Component, Default, Inspectable)]
@@ -48,12 +49,13 @@ fn generate_terrain(
 ) {
     let Ok((entity, terrain)) = query.get_single() else { return;};
 
+    let noise = Noise::new(terrain.noise_config.clone());
+
     commands.entity(entity).with_children(|children| {
-        let noise = Noise::new(terrain.noise_config.clone());
-        for x in 0..=10 {
-            for y in 0..=10 {
-                let nm = noise.generate_noise_map(x, y);
-                let MeshImageData { mesh, image } = mesh::get_mesh(nm, terrain.mesh_config);
+        for x in 0..=1 {
+            for y in 0..=1 {
+                let nm = noise.generate_noise_map(x, y, &terrain.mesh_config);
+                let MeshImageData { mesh, image } = mesh::get_mesh(&nm, &terrain.mesh_config);
                 let material = StandardMaterial {
                     base_color_texture: Some(images.add(image)),
                     alpha_mode: AlphaMode::Blend,
@@ -62,21 +64,25 @@ fn generate_terrain(
                     ..default()
                 };
 
-                let size = terrain.noise_config.size as f32;
                 let scale = terrain.mesh_config.scale;
 
                 children
                     .spawn(PbrBundle {
                         mesh: meshes.add(mesh),
                         material: materials.add(material),
-                        transform: Transform::from_xyz(
-                            x as f32 * size * scale,
-                            0.0,
-                            y as f32 * -size * scale,
-                        ),
+                        transform: Transform::from_xyz(x as f32 * scale, 0.0, y as f32 * -scale),
                         ..default()
                     })
-                    .insert(Name::new(format!("Chunk_{x}_{y}")));
+                    .insert(Name::new(format!("Chunk_{x}_{y}")))
+                    .insert(Wireframe);
+
+                // children.spawn(PbrBundle {
+                //     mesh: meshes.add(Mesh::from(shape::Plane {
+                //         size: (1.0 * scale) / 2.0,
+                //     })),
+                //     transform: Transform::from_xyz(x as f32 * scale, 0.5, y as f32 * -scale),
+                //     ..default()
+                // });
             }
         }
     });

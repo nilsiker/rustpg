@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{pbr::wireframe::{WireframePlugin, Wireframe}, prelude::*};
 use bevy_inspector_egui::{WorldInspectorParams, WorldInspectorPlugin};
 use rustpg::{
     core::{camera::CameraPlugin, spectator::SpectatorPlugin},
