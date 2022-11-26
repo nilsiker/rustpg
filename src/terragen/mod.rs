@@ -1,13 +1,15 @@
-pub mod lib_noise;
+mod debug;
 pub mod mesh;
 pub mod noise;
+pub mod terrain_colors;
 
-use bevy::{pbr::wireframe::Wireframe, prelude::*};
+use ::noise::{Fbm, Perlin};
+use bevy::prelude::*;
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
 
 use self::{
-    lib_noise::{Noise, NoiseConfig},
     mesh::{MeshConfig, MeshImageData},
+    noise::{NoiseConfig, NoiseMap},
 };
 
 #[derive(Component, Default, Inspectable)]
@@ -21,7 +23,7 @@ impl Plugin for TerragenPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(setup)
             .add_system(remove_terrain.label("terragen_cleanup"))
-            .add_system(generate_terrain.after("terragen_cleanup"))
+            .add_system(spawn_chunks.after("terragen_cleanup"))
             .register_inspectable::<Terrain>();
     }
 }
@@ -40,7 +42,7 @@ fn remove_terrain(mut commands: Commands, query: Query<Entity, Changed<Terrain>>
     }
 }
 
-fn generate_terrain(
+fn spawn_chunks(
     mut commands: Commands,
     query: Query<(Entity, &Terrain), Changed<Terrain>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -49,18 +51,36 @@ fn generate_terrain(
 ) {
     let Ok((entity, terrain)) = query.get_single() else { return;};
 
-    let noise = Noise::new(terrain.noise_config.clone());
+    let NoiseConfig {
+        seed,
+        octaves,
+        frequency,
+        lacunarity,
+        persistence,
+        offset,
+        falloff,
+    } = terrain.noise_config;
 
     commands.entity(entity).with_children(|children| {
         for x in 0..=1 {
             for y in 0..=1 {
-                let nm = noise.generate_noise_map(x, y, &terrain.mesh_config);
+                let mut fbm: Fbm<Perlin> = Fbm::new(seed);
+                fbm.frequency = frequency;
+                fbm.lacunarity = lacunarity;
+                fbm.persistence = persistence;
+                fbm.octaves = octaves;
+
+                let nm =
+                    NoiseMap::new(&fbm, terrain.mesh_config.grid_size, (x, y), offset, falloff);
+
                 let MeshImageData { mesh, image } = mesh::get_mesh(&nm, &terrain.mesh_config);
+
                 let material = StandardMaterial {
                     base_color_texture: Some(images.add(image)),
-                    alpha_mode: AlphaMode::Blend,
-                    unlit: true,
-
+                    unlit: false,
+                    metallic: 0.0,
+                    reflectance: 0.1,
+                    perceptual_roughness: 1.0,
                     ..default()
                 };
 
@@ -73,8 +93,7 @@ fn generate_terrain(
                         transform: Transform::from_xyz(x as f32 * scale, 0.0, y as f32 * -scale),
                         ..default()
                     })
-                    .insert(Name::new(format!("Chunk_{x}_{y}")))
-                    .insert(Wireframe);
+                    .insert(Name::new(format!("Chunk_{x}_{y}")));
 
                 // children.spawn(PbrBundle {
                 //     mesh: meshes.add(Mesh::from(shape::Plane {

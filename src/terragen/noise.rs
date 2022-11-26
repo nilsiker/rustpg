@@ -1,11 +1,12 @@
-use bevy::prelude::*;
+use bevy::prelude::{Component, Vec2};
 use bevy_inspector_egui::Inspectable;
-use noise::{
-    utils::{NoiseMap, NoiseMapBuilder, PlaneMapBuilder},
-    Fbm, Perlin,
-};
+use noise::{Fbm, NoiseFn, Perlin};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
-use super::mesh::MeshConfig;
+pub struct NoiseMap {
+    size: usize,
+    values: Vec<f64>,
+}
 
 #[derive(Component, Inspectable, Clone)]
 pub struct NoiseConfig {
@@ -16,75 +17,74 @@ pub struct NoiseConfig {
     pub lacunarity: f64,
     pub persistence: f64,
     pub offset: Vec2,
+    pub falloff: bool,
 }
+
+// NOTE found this to be a nice default!
 impl Default for NoiseConfig {
     fn default() -> Self {
         Self {
             seed: 0,
             octaves: 4,
-            frequency: 0.01,
-            lacunarity: 1.1,
-            persistence: 1.0,
-            offset: Vec2::default(),
+            frequency: 1.0,
+            lacunarity: 2.3,
+            persistence: 0.8,
+            offset: Vec2::new(0.0, -1.0),
+            falloff: true,
         }
     }
 }
 
-pub struct Noise {
-    fbm: Fbm<Perlin>,
-    config: NoiseConfig,
-}
+impl NoiseMap {
+    pub fn new(
+        fbm: &Fbm<Perlin>,
+        size: usize,
+        coord: (i32, i32),
+        offset: Vec2,
+        use_falloff: bool,
+    ) -> NoiseMap {
+        let mut values = vec![0.0; size * size];
 
-impl Default for Noise {
-    fn default() -> Self {
-        Self::new(NoiseConfig::default())
+        values.par_iter_mut().enumerate().for_each(|(i, value)| {
+            let x = i % size;
+            let y = i / size;
+            let chunk_offset = Vec2::new(coord.0 as f32, coord.1 as f32);
+            let xf = x as f32 / (size - 1) as f32 + chunk_offset.x + offset.x;
+            let yf = y as f32 / (size - 1) as f32 + chunk_offset.y + offset.y;
+
+            *value = fbm.get([xf as f64, yf as f64]);
+
+            if use_falloff {
+                let x = i % size;
+                let y = i / size;
+
+                let x_val = x as f64 / size as f64 * 2.0 - 1.0;
+                let y_val = y as f64 / size as f64 * 2.0 - 1.0;
+
+                let falloff_val = f64::max(f64::abs(x_val), f64::abs(y_val));
+
+                let a = 3.0;
+                let b = 2.2;
+
+                let evaluated_value =
+                    falloff_val.powf(a) / (falloff_val.powf(a) + (b - b * falloff_val).powf(a));
+
+                *value -= evaluated_value * 2.0;
+            }
+        });
+
+        NoiseMap { size, values }
     }
-}
-impl Noise {
-    pub fn new(config: NoiseConfig) -> Self {
-        let NoiseConfig {
-            seed,
-            octaves,
-            frequency,
-            lacunarity,
-            persistence,
-            ..
-        } = config;
 
-        let mut fbm = Fbm::new(seed);
-        fbm.frequency = frequency;
-        fbm.lacunarity = lacunarity;
-        fbm.octaves = octaves;
-        fbm.persistence = persistence;
-
-        Self { fbm, config }
+    pub fn get_value(&self, x: usize, y: usize) -> f32 {
+        self.values[y * self.size + x] as f32
     }
 
-    pub fn generate_noise_map(&self, x: usize, y: usize, mesh_config: &MeshConfig) -> NoiseMap {
-        todo!(); // TRY worldgen crate instead of this!
-        let NoiseConfig { offset, .. } = self.config;
-        let &MeshConfig {
-            grid_size, scale, ..
-        } = mesh_config;
-        let scale = scale as f64;
+    pub fn size(&self) -> (usize, usize) {
+        (self.size, self.size)
+    }
 
-        let lower_x_bound = x as f64 * scale + offset.x as f64;
-        let upper_x_bound = (x + 1) as f64 * scale + offset.x as f64;
-
-        let lower_y_bound = y as f64 * scale + offset.y as f64;
-        let upper_y_bound = (y + 1) as f64 * scale + offset.y as f64;
-
-        let nm = PlaneMapBuilder::<_, 2>::new(&self.fbm)
-            .set_size(grid_size, grid_size)
-            .set_x_bounds(lower_x_bound, upper_x_bound)
-            .set_y_bounds(lower_y_bound, upper_y_bound);
-
-        let x_b = nm.x_bounds();
-        let y_b = nm.y_bounds();
-
-        bevy::log::info!("chunk ({x},{y}):");
-        bevy::log::info!("x bounds: {:?}", x_b);
-        bevy::log::info!("y bounds: {:?}", y_b);
-        nm.build()
+    pub fn values(&self) -> Vec<f64> {
+        self.values.clone()
     }
 }
