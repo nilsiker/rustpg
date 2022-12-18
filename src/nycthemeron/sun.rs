@@ -15,7 +15,8 @@ impl Plugin for SunPlugin {
             .insert_resource(FractionOfDay(0.0))
             .add_startup_system(setup)
             .add_system(handle_events)
-            .add_system(update_sun_position);
+            .add_system(update_sun_position)
+            .add_system(shadows_follow_camera);
     }
 }
 
@@ -65,4 +66,15 @@ fn update_sun_position(
         0.0,
     );
     transform.rotation = target_rot
+}
+
+fn shadows_follow_camera(
+    mut light: Query<&mut Transform, (With<DirectionalLight>, Without<Camera>)>,
+    query: Query<&Transform, With<Camera>>,
+) {
+    if let Ok(transform) = query.get_single() {
+        if let Ok(mut light) = light.get_single_mut() {
+            light.translation = transform.translation;
+        }
+    }
 }
