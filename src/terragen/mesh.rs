@@ -191,7 +191,7 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
         for x in 0..width {
             let xf = x as f32;
             let zf = y as f32;
-            let height_value = map.get_value(x, y) as f32 * mesh_config.height_multiplier;
+            let height_value = map.get_value(x, y) * mesh_config.height_multiplier;
 
             vertices[vertex_index] = [
                 (top_left_x + xf) / (width - 1) as f32 * scale,
