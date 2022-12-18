@@ -10,3 +10,4 @@ bevy = "0.9.0"
 bevy-inspector-egui = "^0.14.0"
 noise = { version = "0.8.2" }
 rayon = "*"
+futures-lite = "1.12.0"

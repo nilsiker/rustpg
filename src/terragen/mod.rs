@@ -3,8 +3,13 @@ pub mod noise;
 pub mod terrain_colors;
 
 use ::noise::{Fbm, Perlin};
-use bevy::{prelude::*, utils::HashSet};
+use bevy::{
+    prelude::*,
+    tasks::{AsyncComputeTaskPool, Task},
+    utils::HashSet,
+};
 use bevy_inspector_egui::{Inspectable, RegisterInspectable};
+use futures_lite::future;
 
 use self::{
     mesh::{MeshConfig, MeshImageData},
@@ -25,10 +30,10 @@ impl Plugin for TerragenPlugin {
             .insert_resource(PlayerChunk((0, 0)))
             .insert_resource(ChunkPool(HashSet::new()))
             .insert_resource(SpawnedChunks(HashSet::new()))
+            .add_system(spawn_tasks)
             .add_system(remove_terrain.label("terragen_cleanup"))
             .add_system(spawn_chunks.after("terragen_cleanup"))
             .add_system(register_player_chunk)
-            .add_system(log_current_chunk)
             .add_system(update_chunk_pool)
             .register_inspectable::<Terrain>();
     }
@@ -42,25 +47,35 @@ fn setup(mut commands: Commands) {
     ));
 }
 
-fn remove_terrain(mut commands: Commands, query: Query<Entity, Changed<Terrain>>) {
+fn remove_terrain(
+    mut commands: Commands,
+    query: Query<Entity, Changed<Terrain>>,
+    mut spawned: ResMut<SpawnedChunks>,
+) {
     for terrain in &query {
         commands.entity(terrain).despawn_descendants();
+        spawned.0.clear();
     }
 }
 
-fn spawn_chunks(
+fn spawn_tasks(
     mut commands: Commands,
-    query: Query<(Entity, &Terrain)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     pool: Res<ChunkPool>,
     mut spawned: ResMut<SpawnedChunks>,
+    query: Query<(Entity, &Terrain)>,
 ) {
     if !pool.is_changed() {
         return;
     }
     let Ok((entity, terrain)) = query.get_single() else { return;};
+    let thread_pool = AsyncComputeTaskPool::get();
+
+    let to_spawn = pool
+        .0
+        .iter()
+        .filter(|coord| !spawned.0.contains(*coord))
+        .cloned()
+        .collect::<Vec<(i32, i32)>>();
 
     let NoiseConfig {
         seed,
@@ -71,53 +86,67 @@ fn spawn_chunks(
         offset,
         falloff,
     } = terrain.noise_config;
-
-    commands.entity(entity).with_children(|children| {
-        for (x, y) in &pool.0 {
-            if spawned.0.contains(&(*x, *y)) {
-                continue;
-            }
-
+    for (x, y) in to_spawn {
+        let mesh_config = terrain.mesh_config.clone();
+        let task = thread_pool.spawn(async move {
             let mut fbm: Fbm<Perlin> = Fbm::new(seed);
             fbm.frequency = frequency;
             fbm.lacunarity = lacunarity;
             fbm.persistence = persistence;
             fbm.octaves = octaves;
 
-            let nm = NoiseMap::new(
-                &fbm,
-                terrain.mesh_config.grid_size,
-                (*x, *y),
-                offset,
-                falloff,
-            );
+            let nm = NoiseMap::new(&fbm, mesh_config.grid_size, (x, y), offset, falloff);
+            ((x, y), mesh::get_mesh(&nm, &mesh_config))
+        });
+        spawned.0.insert((x, y)); // TODO make a system that removes very distant chunks.
+        commands.entity(entity).with_children(|children| {
+            children.spawn((ComputeMeshImageData(task),));
+        });
+    }
+}
 
-            let MeshImageData { mesh, image } = mesh::get_mesh(&nm, &terrain.mesh_config);
+#[derive(Component)]
+struct ComputeMeshImageData(Task<((i32, i32), MeshImageData)>);
 
-            let material = StandardMaterial {
-                base_color_texture: Some(images.add(image)),
-                unlit: false,
-                metallic: 0.0,
-                reflectance: 0.1,
-                perceptual_roughness: 1.0,
-                ..default()
-            };
-
-            let scale = terrain.mesh_config.scale;
-
-            children
-                .spawn(PbrBundle {
-                    mesh: meshes.add(mesh),
-                    material: materials.add(material),
-                    transform: Transform::from_xyz(*x as f32 * scale, 0.0, *y as f32 * -scale),
+fn spawn_chunks(
+    mut commands: Commands,
+    query: Query<(Entity, &Terrain)>,
+    mut tasks: Query<(Entity, &mut ComputeMeshImageData)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let Ok((entity, terrain)) = query.get_single() else { return;};
+    for (task_entity, mut task) in &mut tasks {
+        if let Some(((x, y), MeshImageData { mesh, image })) =
+            futures_lite::future::block_on(future::poll_once(&mut task.0))
+        {
+            commands.entity(entity).with_children(|children| {
+                let material = StandardMaterial {
+                    base_color_texture: Some(images.add(image)),
+                    unlit: false,
+                    metallic: 0.0,
+                    reflectance: 0.1,
+                    perceptual_roughness: 1.0,
                     ..default()
-                })
-                .insert(Name::new(format!("({x},{y})")))
-                .insert(DistanceOcclusion);
+                };
 
-            spawned.0.insert((*x, *y)); // TODO make a system that removes very distant chunks.
+                let scale = terrain.mesh_config.scale;
+
+                children
+                    .spawn(PbrBundle {
+                        mesh: meshes.add(mesh),
+                        material: materials.add(material),
+                        transform: Transform::from_xyz(x as f32 * scale, 0.0, y as f32 * -scale),
+                        ..default()
+                    })
+                    .insert(Name::new(format!("({x},{y})")))
+                    .insert(DistanceOcclusion);
+            });
+
+            commands.entity(task_entity).despawn_recursive();
         }
-    });
+    }
 }
 
 pub struct PlayerPositionChangedEvent(pub Vec3);
@@ -146,11 +175,6 @@ fn register_player_chunk(
         if *player_chunk != new_chunk_candidate {
             *player_chunk = new_chunk_candidate;
         }
-    }
-}
-fn log_current_chunk(current_chunk: Res<PlayerChunk>) {
-    if current_chunk.is_changed() {
-        bevy::log::info!("Player is in chunk: {:?}", current_chunk.0);
     }
 }
 

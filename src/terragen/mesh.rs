@@ -10,10 +10,9 @@ struct MeshData {
     vertices: Vec<[f32; 3]>,
     indices: Vec<u32>,
     uvs: Vec<[f32; 2]>,
-    normals: Vec<[f32; 3]>,
 }
 
-#[derive(Inspectable)]
+#[derive(Inspectable, Clone)]
 pub struct MeshConfig {
     #[inspectable(min = 2, max = 1025)]
     pub grid_size: usize,
@@ -70,9 +69,9 @@ impl Default for ColorConfig {
 impl Default for MeshConfig {
     fn default() -> Self {
         Self {
-            grid_size: 129,
-            scale: 256.0,
-            height_multiplier: 4.0,
+            grid_size: 65,
+            scale: 512.0,
+            height_multiplier: 16.0,
             render_mode: default(),
             texture_mode: default(),
             flat_shading: true,
@@ -217,7 +216,7 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
         vertices,
         indices,
         uvs,
-        normals: vec![],
+        // TODO add normals when flat shading won't cut it no more!
     }
 }
 
