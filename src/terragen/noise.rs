@@ -30,7 +30,7 @@ impl Default for NoiseConfig {
             lacunarity: 2.3,
             persistence: 0.8,
             offset: Vec2::new(0.0, -1.0),
-            falloff: true,
+            falloff: false,
         }
     }
 }

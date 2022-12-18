@@ -96,7 +96,7 @@ pub enum RenderMode {
 pub enum TextureMode {
     #[default]
     Color,
-    HeightMap,
+    HeightMap(Color),
 }
 
 pub fn get_mesh(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshImageData {
@@ -110,7 +110,7 @@ fn generate_plane(map: &NoiseMap, scale: f32, mesh_config: &MeshConfig) -> MeshI
 
     let data = match mesh_config.texture_mode {
         TextureMode::Color => to_color_vec(map, &mesh_config.color_config),
-        TextureMode::HeightMap => to_heightmap_vec(map),
+        TextureMode::HeightMap(color) => to_heightmap_vec(map, color),
     };
 
     let mesh = Mesh::from(shape::Plane { size: scale });
@@ -147,7 +147,7 @@ fn generate_mesh(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshImageData {
 
     let texture_data = match mesh_config.texture_mode {
         TextureMode::Color => to_color_vec(map, &mesh_config.color_config),
-        TextureMode::HeightMap => to_heightmap_vec(map),
+        TextureMode::HeightMap(color) => to_heightmap_vec(map, color),
     };
 
     let image = Image::new_fill(
@@ -221,16 +221,16 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
     }
 }
 
-fn to_heightmap_vec(map: &NoiseMap) -> Vec<u8> {
+fn to_heightmap_vec(map: &NoiseMap, base_color: Color) -> Vec<u8> {
     let size = map.size().0;
     let mut data: Vec<u8> = Vec::with_capacity(size * size);
 
     for i in map.values() {
         let i_normalized = (i * 0.5 + 0.5).clamp(0.0, 1.0);
         let i_u8 = (i_normalized * 255.0) as u8;
-        data.push(i_u8); //r
-        data.push(i_u8); //g
-        data.push(i_u8); // b
+        data.push(((i_u8 as f32) * base_color.r()) as u8); //r
+        data.push(((i_u8 as f32) * base_color.g()) as u8); //g
+        data.push(((i_u8 as f32) * base_color.b()) as u8); //b
         data.push(255); //a
     }
 
