@@ -11,7 +11,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(CameraPlugin)
         .add_plugin(DebugScenePlugin)
-        .add_plugin(NycthemeronPlugin)
+        .add_plugin(NycthemeronPlugin::default())
         .add_plugin(WorldInspectorPlugin::new())
         .run();
 }

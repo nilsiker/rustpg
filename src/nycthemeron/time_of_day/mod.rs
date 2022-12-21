@@ -18,7 +18,7 @@ pub enum PartOfDay {
 
 #[derive(Default)]
 pub struct TimeOfDayPlugin {
-    time_of_day: TimeOfDay,
+    pub time_of_day: TimeOfDay,
 }
 impl TimeOfDayPlugin {
     pub fn new(initial_time: TimeOfDay) -> Self {

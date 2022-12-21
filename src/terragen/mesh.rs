@@ -12,7 +12,7 @@ struct MeshData {
     uvs: Vec<[f32; 2]>,
 }
 
-#[derive(Inspectable, Clone)]
+#[derive(Resource, Inspectable, Clone)]
 pub struct MeshConfig {
     #[inspectable(min = 2, max = 1025)]
     pub grid_size: usize,
