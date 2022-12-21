@@ -8,7 +8,7 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task},
     utils::HashSet,
 };
-use bevy_inspector_egui::{Inspectable, RegisterInspectable};
+use bevy_inspector_egui::{Inspectable, InspectorPlugin, RegisterInspectable};
 use futures_lite::future;
 
 use self::{
@@ -17,16 +17,21 @@ use self::{
 };
 
 #[derive(Component, Default, Inspectable)]
-struct Terrain {
-    mesh_config: MeshConfig,
-    noise_config: NoiseConfig,
+struct Terrain;
+
+#[derive(Default)]
+pub struct TerragenPlugin {
+    pub mesh_config: MeshConfig,
+    pub noise_config: NoiseConfig,
+    pub inspectors: bool,
 }
 
-pub struct TerragenPlugin;
 impl Plugin for TerragenPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(setup)
             .add_event::<PlayerPositionChangedEvent>()
+            .insert_resource(self.mesh_config.clone())
+            .insert_resource(self.noise_config.clone())
             .insert_resource(PlayerChunk((0, 0)))
             .insert_resource(ChunkPool(HashSet::new()))
             .insert_resource(SpawnedChunks(HashSet::new()))
@@ -36,6 +41,11 @@ impl Plugin for TerragenPlugin {
             .add_system(register_player_chunk)
             .add_system(update_chunk_pool)
             .register_inspectable::<Terrain>();
+
+        if self.inspectors {
+            app.add_plugin(InspectorPlugin::<MeshConfig>::new_insert_manually());
+            app.add_plugin(InspectorPlugin::<NoiseConfig>::new_insert_manually());
+        }
     }
 }
 
@@ -49,25 +59,31 @@ fn setup(mut commands: Commands) {
 
 fn remove_terrain(
     mut commands: Commands,
-    query: Query<Entity, Changed<Terrain>>,
+    query: Query<Entity, With<Terrain>>,
+    mesh_config: Res<MeshConfig>,
+    noise_config: Res<NoiseConfig>,
     mut spawned: ResMut<SpawnedChunks>,
 ) {
-    for terrain in &query {
-        commands.entity(terrain).despawn_descendants();
-        spawned.0.clear();
+    if mesh_config.is_changed() || noise_config.is_changed() {
+        for terrain in &query {
+            commands.entity(terrain).despawn_descendants();
+            spawned.0.clear();
+        }
     }
 }
 
 fn spawn_tasks(
     mut commands: Commands,
+    query: Query<Entity, With<Terrain>>,
+    mesh_config: Res<MeshConfig>,
+    noise_config: Res<NoiseConfig>,
     pool: Res<ChunkPool>,
     mut spawned: ResMut<SpawnedChunks>,
-    query: Query<(Entity, &Terrain)>,
 ) {
     if !pool.is_changed() {
         return;
     }
-    let Ok((entity, terrain)) = query.get_single() else { return;};
+    let Ok(entity, ) = query.get_single() else { return;};
     let thread_pool = AsyncComputeTaskPool::get();
 
     let to_spawn = pool
@@ -85,9 +101,9 @@ fn spawn_tasks(
         persistence,
         offset,
         falloff,
-    } = terrain.noise_config;
+    } = *noise_config;
     for (x, y) in to_spawn {
-        let mesh_config = terrain.mesh_config.clone();
+        let mesh_config = mesh_config.clone();
         let task = thread_pool.spawn(async move {
             let mut fbm: Fbm<Perlin> = Fbm::new(seed);
             fbm.frequency = frequency;
@@ -110,13 +126,14 @@ struct ComputeMeshImageData(Task<((i32, i32), MeshImageData)>);
 
 fn spawn_chunks(
     mut commands: Commands,
-    query: Query<(Entity, &Terrain)>,
+    query: Query<Entity, With<Terrain>>,
+    mesh_config: Res<MeshConfig>,
     mut tasks: Query<(Entity, &mut ComputeMeshImageData)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, terrain)) = query.get_single() else { return;};
+    let Ok(entity) = query.get_single() else { return;};
     for (task_entity, mut task) in &mut tasks {
         if let Some(((x, y), MeshImageData { mesh, image })) =
             futures_lite::future::block_on(future::poll_once(&mut task.0))
@@ -131,7 +148,7 @@ fn spawn_chunks(
                     ..default()
                 };
 
-                let scale = terrain.mesh_config.scale;
+                let scale = mesh_config.scale;
 
                 children
                     .spawn(PbrBundle {
@@ -160,10 +177,11 @@ struct PlayerChunk((i32, i32));
 fn register_player_chunk(
     mut player_chunk: ResMut<PlayerChunk>,
     terrain: Query<&Terrain>,
+    mesh_config: Res<MeshConfig>,
     mut events: EventReader<PlayerPositionChangedEvent>,
 ) {
-    let Ok(terrain) = terrain.get_single() else {return;};
-    let chunk_size = terrain.mesh_config.scale;
+    let Ok(_) = terrain.get_single() else {return;};
+    let chunk_size = mesh_config.scale;
     for event in events.iter() {
         let mut pos = event.0;
         pos.x += chunk_size / 2.0;

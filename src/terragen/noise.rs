@@ -1,4 +1,4 @@
-use bevy::prelude::{Component, Vec2};
+use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 use noise::{Fbm, NoiseFn, Perlin};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
@@ -8,7 +8,7 @@ pub struct NoiseMap {
     values: Vec<f64>,
 }
 
-#[derive(Component, Inspectable, Clone)]
+#[derive(Resource, Component, Inspectable, Clone)]
 pub struct NoiseConfig {
     pub seed: u32,
     #[inspectable(min = 0, max = 6)]
