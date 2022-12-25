@@ -20,7 +20,7 @@ use self::{
 struct Terrain;
 
 #[derive(Component)]
-struct Chunk;
+pub struct Chunk;
 
 #[derive(Default)]
 pub struct TerragenPlugin {
