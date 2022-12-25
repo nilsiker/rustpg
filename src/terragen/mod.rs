@@ -19,6 +19,9 @@ use self::{
 #[derive(Component, Default, Inspectable)]
 struct Terrain;
 
+#[derive(Component)]
+struct Chunk;
+
 #[derive(Default)]
 pub struct TerragenPlugin {
     pub mesh_config: MeshConfig,
@@ -158,6 +161,7 @@ fn spawn_chunks(
                         ..default()
                     })
                     .insert(Name::new(format!("({x},{y})")))
+                    .insert(Chunk)
                     .insert(DistanceOcclusion);
             });
 
