@@ -41,6 +41,7 @@ impl Plugin for TimeOfDayPlugin {
 pub struct TimeOfDay {
     time: f32,
     speed_modifier: f32,
+    pass_time: bool,
 }
 
 impl Default for TimeOfDay {
@@ -48,6 +49,7 @@ impl Default for TimeOfDay {
         Self {
             time: 8.0 * SECONDS_IN_HOUR,
             speed_modifier: 1.0,
+            pass_time: false,
         }
     }
 }
@@ -79,6 +81,7 @@ impl TimeOfDay {
         TimeOfDay {
             time: h * 3600.0 + m * 60.0 + s,
             speed_modifier: speed,
+            pass_time: false,
         }
     }
 
@@ -116,7 +119,9 @@ impl TimeOfDay {
 }
 
 fn pass_time(mut time_of_day: ResMut<TimeOfDay>, time: Res<Time>) {
-    time_of_day.tick(time.delta_seconds());
+    if time_of_day.pass_time {
+        time_of_day.tick(time.delta_seconds());
+    }
 }
 
 fn _log_time(time_of_day: ResMut<TimeOfDay>) {
