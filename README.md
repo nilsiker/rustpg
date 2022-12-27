@@ -5,8 +5,6 @@
 ![rust-latest](https://img.shields.io/badge/rust-stable-orange)
 ![bevy-0.9](https://img.shields.io/badge/bevy-0.9-lightgray)
 
-
-## Introduction
  **rustpg** is a springboard for developing and testing our RPG-focused Bevy plugins.
 
 ## Features
