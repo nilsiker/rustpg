@@ -1,6 +1,9 @@
 pub mod mesh;
 pub mod noise;
+pub mod procspawn;
 pub mod terrain_colors;
+
+use std::f32::consts::FRAC_PI_2;
 
 use ::noise::{Fbm, Perlin};
 use bevy::{
@@ -8,22 +11,33 @@ use bevy::{
     tasks::{AsyncComputeTaskPool, Task},
     utils::HashSet,
 };
-use bevy_inspector_egui::{Inspectable, InspectorPlugin, RegisterInspectable};
+use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use futures_lite::future;
 
 use self::{
     mesh::{MeshConfig, MeshImageData},
     noise::{NoiseConfig, NoiseMap},
+    procspawn::ProcSpawnPlugin,
 };
 
 #[derive(Component, Default, Inspectable)]
 struct Terrain;
 
 #[derive(Component)]
-pub struct Chunk;
+pub struct Chunk {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Resource)]
+struct ChunkDistance(i32);
+#[derive(Resource)]
+struct ObjectDistance(i32);
 
 #[derive(Default)]
 pub struct TerragenPlugin {
+    pub chunk_distance: i32,
+    pub object_distance: i32,
     pub mesh_config: MeshConfig,
     pub noise_config: NoiseConfig,
     pub inspectors: bool,
@@ -36,6 +50,8 @@ impl Plugin for TerragenPlugin {
             .insert_resource(self.mesh_config.clone())
             .insert_resource(self.noise_config.clone())
             .insert_resource(PlayerChunk((0, 0)))
+            .insert_resource(ChunkDistance(self.chunk_distance))
+            .insert_resource(ObjectDistance(self.object_distance))
             .insert_resource(ChunkPool(HashSet::new()))
             .insert_resource(SpawnedChunks(HashSet::new()))
             .add_system(spawn_tasks)
@@ -43,7 +59,9 @@ impl Plugin for TerragenPlugin {
             .add_system(spawn_chunks.after("terragen_cleanup"))
             .add_system(register_player_chunk)
             .add_system(update_chunk_pool)
-            .register_inspectable::<Terrain>();
+            .add_plugin(ProcSpawnPlugin)
+            .add_plugin(InspectorPlugin::<NoiseConfig>::new_insert_manually())
+            .add_plugin(InspectorPlugin::<MeshConfig>::new_insert_manually());
 
         if self.inspectors {
             app.add_plugin(InspectorPlugin::<MeshConfig>::new_insert_manually());
@@ -51,6 +69,9 @@ impl Plugin for TerragenPlugin {
         }
     }
 }
+
+#[derive(Component, Inspectable, Default)]
+struct DummyMarker;
 
 fn setup(mut commands: Commands) {
     commands.spawn((
@@ -138,8 +159,14 @@ fn spawn_chunks(
 ) {
     let Ok(entity) = query.get_single() else { return;};
     for (task_entity, mut task) in &mut tasks {
-        if let Some(((x, y), MeshImageData { mesh, image })) =
-            futures_lite::future::block_on(future::poll_once(&mut task.0))
+        if let Some((
+            (x, y),
+            MeshImageData {
+                mesh,
+                image,
+                collider,
+            },
+        )) = futures_lite::future::block_on(future::poll_once(&mut task.0))
         {
             commands.entity(entity).with_children(|children| {
                 let material = StandardMaterial {
@@ -153,16 +180,39 @@ fn spawn_chunks(
 
                 let scale = mesh_config.scale;
 
-                children
-                    .spawn(PbrBundle {
-                        mesh: meshes.add(mesh),
-                        material: materials.add(material),
-                        transform: Transform::from_xyz(x as f32 * scale, 0.0, y as f32 * -scale),
-                        ..default()
-                    })
-                    .insert(Name::new(format!("({x},{y})")))
-                    .insert(Chunk)
+                let mut mesh = children.spawn(PbrBundle {
+                    mesh: meshes.add(mesh),
+                    material: materials.add(material),
+                    transform: Transform::from_xyz(x as f32 * scale, 0.0, y as f32 * -scale),
+                    ..default()
+                });
+
+                mesh.insert(Name::new(format!("({x},{y})")))
+                    .insert(Chunk { x, y })
                     .insert(DistanceOcclusion);
+
+                match collider {
+                    Some(col) => {
+                        mesh.with_children(|children| {
+                            let mut transform = Transform::from_scale({
+                                let mut vec = Vec3::ONE;
+                                vec.z = -vec.z;
+                                vec.x = -vec.x;
+                                vec
+                            });
+                            transform.rotation =
+                                Quat::from_euler(EulerRot::XYZ, 0.0, -FRAC_PI_2, 0.0);
+
+                            children
+                                .spawn(TransformBundle {
+                                    local: transform,
+                                    ..default()
+                                })
+                                .insert(col);
+                        });
+                    }
+                    None => todo!(),
+                };
             });
 
             commands.entity(task_entity).despawn_recursive();
@@ -200,13 +250,19 @@ fn register_player_chunk(
     }
 }
 
-fn update_chunk_pool(player_chunk: Res<PlayerChunk>, mut pool: ResMut<ChunkPool>) {
+fn update_chunk_pool(
+    player_chunk: Res<PlayerChunk>,
+    chunk_distance: Res<ChunkDistance>,
+    mut pool: ResMut<ChunkPool>,
+) {
     if player_chunk.is_changed() {
         pool.0.clear();
 
+        let dist = chunk_distance.0;
         let (x, y) = player_chunk.0;
-        for nx in x - 2..=x + 2 {
-            for ny in y - 2..=y + 2 {
+
+        for nx in x - dist..=x + dist {
+            for ny in y - dist..=y + dist {
                 if !pool.0.contains(&(nx, ny)) {
                     pool.0.insert((nx, ny));
                 }

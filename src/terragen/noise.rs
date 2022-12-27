@@ -25,11 +25,11 @@ impl Default for NoiseConfig {
     fn default() -> Self {
         Self {
             seed: 0,
-            octaves: 4,
-            frequency: 1.0,
-            lacunarity: 2.3,
-            persistence: 0.8,
-            offset: Vec2::new(0.0, -1.0),
+            octaves: 6,
+            frequency: 0.5,
+            lacunarity: 4.0,
+            persistence: 0.3,
+            offset: Vec2::new(0.0, 0.0),
             falloff: false,
         }
     }

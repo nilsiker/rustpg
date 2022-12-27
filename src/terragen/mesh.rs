@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::render::mesh::Indices;
 use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat};
 use bevy_inspector_egui::Inspectable;
+use bevy_rapier3d::prelude::*;
 
 use super::noise::NoiseMap;
 use super::terrain_colors::TerrainColor;
@@ -10,6 +11,7 @@ struct MeshData {
     vertices: Vec<[f32; 3]>,
     indices: Vec<u32>,
     uvs: Vec<[f32; 2]>,
+    heights: Vec<f32>,
 }
 
 #[derive(Resource, Inspectable, Clone)]
@@ -23,6 +25,21 @@ pub struct MeshConfig {
     pub flat_shading: bool,
     pub color_config: ColorConfig,
 }
+
+impl Default for MeshConfig {
+    fn default() -> Self {
+        Self {
+            grid_size: 33,
+            scale: 512.0,
+            height_multiplier: 80.0,
+            render_mode: default(),
+            texture_mode: default(),
+            flat_shading: true,
+            color_config: default(),
+        }
+    }
+}
+
 #[derive(Inspectable, Default, Clone)]
 pub struct ColorRange {
     pub color: Color,
@@ -33,6 +50,7 @@ pub struct ColorRange {
 pub struct ColorConfig {
     pub colors: Vec<ColorRange>,
 }
+
 impl Default for ColorConfig {
     fn default() -> Self {
         Self {
@@ -47,15 +65,15 @@ impl Default for ColorConfig {
                 },
                 ColorRange {
                     color: TerrainColor::GRASS,
-                    start_height: 0.15,
+                    start_height: 0.3,
                 },
                 ColorRange {
                     color: TerrainColor::SAND,
-                    start_height: 0.05,
+                    start_height: 0.25,
                 },
                 ColorRange {
                     color: TerrainColor::SHALLOW_WATER,
-                    start_height: 0.0,
+                    start_height: 0.2,
                 },
                 ColorRange {
                     color: TerrainColor::DEEP_WATER,
@@ -66,23 +84,10 @@ impl Default for ColorConfig {
     }
 }
 
-impl Default for MeshConfig {
-    fn default() -> Self {
-        Self {
-            grid_size: 65,
-            scale: 512.0,
-            height_multiplier: 16.0,
-            render_mode: default(),
-            texture_mode: default(),
-            flat_shading: true,
-            color_config: default(),
-        }
-    }
-}
-
 pub struct MeshImageData {
     pub mesh: Mesh,
     pub image: Image,
+    pub collider: Option<Collider>,
 }
 
 #[derive(Default, Clone, Copy, Inspectable)]
@@ -124,8 +129,13 @@ fn generate_plane(map: &NoiseMap, scale: f32, mesh_config: &MeshConfig) -> MeshI
         data.as_slice(),
         TextureFormat::Rgba8UnormSrgb,
     );
+    let collider = None;
 
-    MeshImageData { mesh, image }
+    MeshImageData {
+        mesh,
+        image,
+        collider,
+    }
 }
 
 fn generate_mesh(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshImageData {
@@ -160,7 +170,18 @@ fn generate_mesh(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshImageData {
         TextureFormat::Rgba8UnormSrgb,
     );
 
-    MeshImageData { mesh, image }
+    let collider = Collider::heightfield(
+        mesh_data.heights,
+        size as usize,
+        size as usize,
+        Vec3::ONE * mesh_config.scale,
+    );
+
+    MeshImageData {
+        mesh,
+        image,
+        collider: Some(collider),
+    }
 }
 
 fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
@@ -171,6 +192,7 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
     let top_left_x = (width - 1) as f32 / -2.0;
     let top_left_z = (height - 1) as f32 / 2.0;
 
+    let mut heights = vec![0.0; height * width];
     let mut vertices = vec![[0.0; 3]; height * width];
 
     let mut indices = vec![0; (height - 1) * (width - 1) * 6];
@@ -192,12 +214,12 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
             let xf = x as f32;
             let zf = y as f32;
             let height_value = map.get_value(x, y) * mesh_config.height_multiplier;
-
+            heights[vertex_index] = map.get_value(x, y) / mesh_config.scale * mesh_config.height_multiplier;
             vertices[vertex_index] = [
                 (top_left_x + xf) / (width - 1) as f32 * scale,
                 height_value,
                 (top_left_z - zf) / (height - 1) as f32 * scale,
-            ];
+            ]; 
             uvs[vertex_index] = [
                 x as f32 / (width - 1) as f32,
                 y as f32 / (height - 1) as f32,
@@ -216,7 +238,8 @@ fn generate_mesh_data(map: &NoiseMap, mesh_config: &MeshConfig) -> MeshData {
         vertices,
         indices,
         uvs,
-        // TODO add normals when flat shading won't cut it no more!
+        heights, // used for heightfield collision!
+                 // TODO add normals when flat shading won't cut it no more!
     }
 }
 
